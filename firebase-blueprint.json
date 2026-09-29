@@ -1,0 +1,72 @@
+{
+  "entities": {
+    "SharedStore": {
+      "title": "SharedStore",
+      "description": "Toàn bộ dữ liệu đồng bộ của HongKong Cổ Trấn giữa các thiết bị",
+      "type": "object",
+      "properties": {
+        "menu": {
+          "type": "array",
+          "description": "Danh sách món ăn thức uống"
+        },
+        "orders": {
+          "type": "array",
+          "description": "Danh sách đơn hàng bán ra"
+        },
+        "expenses": {
+          "type": "array",
+          "description": "Danh sách phiếu chi tiền mặt"
+        },
+        "deletedOrderIds": {
+          "type": "array",
+          "description": "Danh sách ID các đơn hàng đã xóa"
+        },
+        "deletedExpenseIds": {
+          "type": "array",
+          "description": "Danh sách ID các phiếu chi đã xóa"
+        },
+        "users": {
+          "type": "array",
+          "description": "Tài khoản nhân viên & quản lý"
+        },
+        "printerSettings": {
+          "type": "object",
+          "description": "Cấu hình IP máy in LAN"
+        },
+        "billTemplate": {
+          "type": "object",
+          "description": "Mẫu in hóa đơn"
+        },
+        "labelTemplate": {
+          "type": "object",
+          "description": "Mẫu in tem"
+        },
+        "homepage": {
+          "type": "object",
+          "description": "Cấu hình tivi và góc check-in"
+        },
+        "masterPassword": {
+          "type": "string",
+          "description": "Mật khẩu chủ"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Thời gian cập nhật gần nhất"
+        },
+        "updatedBy": {
+          "type": "string",
+          "description": "Người cập nhật gần nhất"
+        }
+      },
+      "required": ["updatedAt"]
+    }
+  },
+  "firestore": {
+    "/shops/{shopId}/store/{storeDoc}": {
+      "schema": {
+        "$ref": "#/entities/SharedStore"
+      },
+      "description": "Kho lưu trữ dữ liệu đồng bộ đa thiết bị của quán"
+    }
+  }
+}

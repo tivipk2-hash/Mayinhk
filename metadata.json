@@ -1,0 +1,8 @@
+{
+  "name": "Remix HongKong Cổ Trấn - Quán Cà Phê \u0026 POS",
+  "description": "pos bán hàng thông qua code mới",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
