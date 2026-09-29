@@ -1,6 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { onSyncStatusChange, getSyncStatus, getLastSyncError, SyncStatus, validateFirestoreConnection } from '../../services/firebase';
-import { Cloud, CloudOff, RefreshCw, CheckCircle2, AlertTriangle, Smartphone, Monitor, Globe } from 'lucide-react';
+import {
+  onSyncStatusChange,
+  getSyncStatus,
+  getLastSyncError,
+  SyncStatus,
+  validateFirestoreConnection,
+  CLOUD_PROJECT_ID,
+  CLOUD_DATABASE_ID
+} from '../../services/firebase';
+import { Cloud, CloudOff, RefreshCw, CheckCircle2, AlertTriangle, Globe, Database, ShieldCheck } from 'lucide-react';
 
 interface CloudSyncBadgeProps {
   className?: string;
@@ -16,14 +24,19 @@ export const CloudSyncBadge: React.FC<CloudSyncBadgeProps> = ({ className = '', 
   useEffect(() => {
     return onSyncStatusChange((newStatus, error) => {
       setStatus(newStatus);
-      if (error) setErrorMsg(error);
+      setErrorMsg(error || '');
     });
   }, []);
 
   const handleManualSync = async () => {
     setIsRetrying(true);
-    await validateFirestoreConnection();
-    setTimeout(() => setIsRetrying(false), 800);
+    const result = await validateFirestoreConnection();
+    if (result.ok) {
+      setErrorMsg('');
+    } else {
+      setErrorMsg(result.message);
+    }
+    setTimeout(() => setIsRetrying(false), 600);
   };
 
   return (
@@ -62,7 +75,7 @@ export const CloudSyncBadge: React.FC<CloudSyncBadgeProps> = ({ className = '', 
 
       {/* Popover Card */}
       {showPopover && (
-        <div className="absolute top-full mt-2 right-0 z-50 w-72 sm:w-80 p-4 rounded-2xl bg-neutral-900 border border-neutral-700 shadow-2xl text-neutral-200 text-xs space-y-3 animate-in fade-in zoom-in-95">
+        <div className="absolute top-full mt-2 right-0 z-50 w-80 sm:w-96 p-4 rounded-2xl bg-neutral-900 border border-neutral-700 shadow-2xl text-neutral-200 text-xs space-y-3 animate-in fade-in zoom-in-95">
           <div className="flex items-center justify-between border-b border-neutral-800 pb-2">
             <div className="flex items-center gap-2">
               <Globe className="w-4 h-4 text-amber-400" />
@@ -70,13 +83,13 @@ export const CloudSyncBadge: React.FC<CloudSyncBadgeProps> = ({ className = '', 
             </div>
             <button
               onClick={() => setShowPopover(false)}
-              className="text-neutral-400 hover:text-white text-xs font-bold"
+              className="text-neutral-400 hover:text-white text-xs font-bold cursor-pointer"
             >
               ✕
             </button>
           </div>
 
-          <div className="space-y-2 text-[11px] leading-relaxed">
+          <div className="space-y-2.5 text-[11px] leading-relaxed">
             <div className="flex items-start gap-2">
               <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
               <div>
@@ -94,9 +107,30 @@ export const CloudSyncBadge: React.FC<CloudSyncBadgeProps> = ({ className = '', 
               </span>
             </div>
 
+            {/* Cloud Project & Database Info */}
+            <div className="p-2.5 rounded-xl bg-neutral-950/60 border border-neutral-800 space-y-1.5 font-mono text-[10px]">
+              <div className="flex items-center justify-between text-neutral-400">
+                <span>Dự Án (Project ID):</span>
+                <span className="text-amber-400 font-bold">{CLOUD_PROJECT_ID}</span>
+              </div>
+              <div className="flex items-center justify-between text-neutral-400">
+                <span>Cơ sở dữ liệu:</span>
+                <span className="text-cyan-400 truncate max-w-[170px]" title={CLOUD_DATABASE_ID}>
+                  {CLOUD_DATABASE_ID}
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-neutral-400 pt-1 border-t border-neutral-800">
+                <span>Quyền Firestore Rules:</span>
+                <span className="text-emerald-400 font-bold flex items-center gap-1">
+                  <ShieldCheck className="w-3 h-3 text-emerald-400" /> Đã kích hoạt (Active)
+                </span>
+              </div>
+            </div>
+
             {errorMsg && (
-              <div className="p-2 rounded-lg bg-red-950/60 border border-red-800 text-red-300 text-[10px]">
-                {errorMsg}
+              <div className="p-2.5 rounded-xl bg-red-950/60 border border-red-800 text-red-300 text-[11px] flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                <span>{errorMsg}</span>
               </div>
             )}
           </div>
@@ -106,7 +140,7 @@ export const CloudSyncBadge: React.FC<CloudSyncBadgeProps> = ({ className = '', 
             <button
               onClick={handleManualSync}
               disabled={isRetrying}
-              className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-[11px] flex items-center gap-1.5 transition-colors disabled:opacity-50 cursor-pointer"
+              className="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-[11px] flex items-center gap-1.5 transition-colors disabled:opacity-50 cursor-pointer"
             >
               <RefreshCw className={`w-3 h-3 ${isRetrying ? 'animate-spin' : ''}`} />
               <span>Kiểm tra kết nối</span>

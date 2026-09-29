@@ -12,13 +12,16 @@ export const db: Firestore = firebaseConfig.firestoreDatabaseId
   ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
   : getFirestore(app);
 
+export const CLOUD_PROJECT_ID = firebaseConfig.projectId;
+export const CLOUD_DATABASE_ID = firebaseConfig.firestoreDatabaseId;
+
 const SHOP_ID = 'hongkong_cotran';
 const STORE_DOC = 'shared_state';
 
 export type SyncStatus = 'connecting' | 'synced' | 'syncing' | 'offline' | 'error';
 
 let currentSyncStatus: SyncStatus = 'connecting';
-let syncStatusListeners: ((status: SyncStatus, error?: string) => void)[] = [];
+let syncStatusListeners: ((status: SyncStatus, error: string) => void)[] = [];
 let lastSyncError = '';
 
 export function getSyncStatus(): SyncStatus {
@@ -29,7 +32,7 @@ export function getLastSyncError(): string {
   return lastSyncError;
 }
 
-export function onSyncStatusChange(listener: (status: SyncStatus, error?: string) => void): () => void {
+export function onSyncStatusChange(listener: (status: SyncStatus, error: string) => void): () => void {
   syncStatusListeners.push(listener);
   listener(currentSyncStatus, lastSyncError);
   return () => {
@@ -37,27 +40,30 @@ export function onSyncStatusChange(listener: (status: SyncStatus, error?: string
   };
 }
 
-function notifySyncStatus(status: SyncStatus, error?: string) {
+function notifySyncStatus(status: SyncStatus, error: string = '') {
   currentSyncStatus = status;
-  if (error) lastSyncError = error;
+  lastSyncError = error;
   syncStatusListeners.forEach(l => l(status, error));
 }
 
-// Validate connection to Firestore as required by Firebase skill
-export async function validateFirestoreConnection(): Promise<boolean> {
+/**
+ * Validate live connection to Firestore server
+ */
+export async function validateFirestoreConnection(): Promise<{ ok: boolean; message: string }> {
   try {
-    await getDocFromServer(doc(db, 'test', 'connection'));
-    notifySyncStatus('synced');
-    return true;
+    notifySyncStatus('syncing', '');
+    const storeRef = doc(db, 'shops', SHOP_ID, 'store', STORE_DOC);
+    await getDocFromServer(storeRef);
+    notifySyncStatus('synced', '');
+    return { ok: true, message: 'Kết nối Firebase Firestore Cloud thành công 100%!' };
   } catch (error) {
-    if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.warn('Firebase client is offline:', error);
-      notifySyncStatus('offline', 'Thiết bị đang ngoại tuyến hoặc không có mạng');
+    const msg = (error as Error).message || String(error);
+    if (msg.includes('offline') || msg.includes('the client is offline') || msg.includes('unavailable')) {
+      notifySyncStatus('offline', 'Thiết bị đang ngoại tuyến hoặc không có kết nối Internet');
     } else {
-      console.warn('Firestore test connection note:', error);
-      notifySyncStatus('synced'); // test doc may not exist yet, but connection is alive
+      notifySyncStatus('error', msg);
     }
-    return false;
+    return { ok: false, message: msg };
   }
 }
 
@@ -70,14 +76,14 @@ export function subscribeToCloudState(
 ): () => void {
   const storeRef = doc(db, 'shops', SHOP_ID, 'store', STORE_DOC);
 
-  notifySyncStatus('connecting');
+  notifySyncStatus('connecting', '');
 
   const unsubscribe = onSnapshot(
     storeRef,
     async (snapshot) => {
       if (snapshot.exists()) {
         const data = snapshot.data();
-        notifySyncStatus('synced');
+        notifySyncStatus('synced', '');
         if (data && data.state) {
           const cloudState = data.state as AppState;
           const currentLocal = loadState();
@@ -120,14 +126,14 @@ export function subscribeToCloudState(
       } else {
         // First time initialization: ONLY seed with current local state if store does not exist
         try {
-          notifySyncStatus('syncing');
+          notifySyncStatus('syncing', '');
           const localCurrent = loadState();
           await setDoc(storeRef, {
             state: localCurrent,
             updatedAt: new Date().toISOString(),
             updatedBy: 'system_init',
           });
-          notifySyncStatus('synced');
+          notifySyncStatus('synced', '');
         } catch (err) {
           console.error('Error seeding initial Firestore state:', err);
           notifySyncStatus('error', (err as Error).message);
@@ -150,7 +156,7 @@ export function subscribeToCloudState(
  */
 export async function pushStateToCloud(newState: AppState, updatedBy: string = 'client'): Promise<boolean> {
   try {
-    notifySyncStatus('syncing');
+    notifySyncStatus('syncing', '');
     const storeRef = doc(db, 'shops', SHOP_ID, 'store', STORE_DOC);
 
     let stateToWrite = newState;
@@ -202,7 +208,7 @@ export async function pushStateToCloud(newState: AppState, updatedBy: string = '
       updatedAt: new Date().toISOString(),
       updatedBy,
     });
-    notifySyncStatus('synced');
+    notifySyncStatus('synced', '');
     return true;
   } catch (error) {
     console.error('Error pushing state to Firestore:', error);
