@@ -1,7 +1,7 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore, doc, onSnapshot, setDoc, getDoc, getDocFromServer, Firestore } from 'firebase/firestore';
 import { AppState } from '../types';
-import { mergeStates, loadState, mergeOrdersList, mergeExpensesList, mergeShiftsList } from './storage';
+import { mergeStates, loadState, mergeOrdersList, mergeExpensesList, mergeShiftsList, sanitizeDeletedOrderIds } from './storage';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 // Initialize Firebase
@@ -88,10 +88,10 @@ export function subscribeToCloudState(
           const cloudState = data.state as AppState;
           const currentLocal = loadState();
 
-          const combinedDeletedOrderIds = Array.from(new Set([
+          const combinedDeletedOrderIds = sanitizeDeletedOrderIds(Array.from(new Set([
             ...(currentLocal.deletedOrderIds || []),
             ...(cloudState.deletedOrderIds || [])
-          ]));
+          ])));
           const combinedDeletedExpenseIds = Array.from(new Set([
             ...(currentLocal.deletedExpenseIds || []),
             ...(cloudState.deletedExpenseIds || [])
@@ -167,10 +167,10 @@ export async function pushStateToCloud(newState: AppState, updatedBy: string = '
         if (cloudData && cloudData.state) {
           const cloudState = cloudData.state as AppState;
 
-          const combinedDeletedOrderIds = Array.from(new Set([
+          const combinedDeletedOrderIds = sanitizeDeletedOrderIds(Array.from(new Set([
             ...(newState.deletedOrderIds || []),
             ...(cloudState.deletedOrderIds || [])
-          ]));
+          ])));
           const combinedDeletedExpenseIds = Array.from(new Set([
             ...(newState.deletedExpenseIds || []),
             ...(cloudState.deletedExpenseIds || [])

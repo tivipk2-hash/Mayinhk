@@ -24,7 +24,7 @@ import {
   DEFAULT_BRIDGE_WS_URL,
   ERROR_BRIDGE_NOT_RUNNING
 } from '../../services/printBridgeService';
-import { exportBackupJSON, importBackupJSON } from '../../services/storage';
+import { exportBackupJSON, importBackupJSON, sanitizeDeletedOrderIds } from '../../services/storage';
 import { INITIAL_STATE } from '../../data/initialData';
 import { pushStateToCloud, validateFirestoreConnection, getSyncStatus } from '../../services/firebase';
 import { CloudSyncBadge } from '../common/CloudSyncBadge';
@@ -549,12 +549,10 @@ export const AdminModal: React.FC<AdminModalProps> = ({
   // Handlers for Orders
   const handleDeleteOrder = (id: string) => {
     const targetOrder = state.orders.find(o => o.id === id);
-    const idsToDelete = [id];
-    if (targetOrder?.code) idsToDelete.push(targetOrder.code);
-
+    const sanitizedDeletedIds = sanitizeDeletedOrderIds(state.deletedOrderIds || []);
     const updatedDeletedOrderIds = Array.from(new Set([
-      ...(state.deletedOrderIds || []),
-      ...idsToDelete,
+      ...sanitizedDeletedIds,
+      id,
     ]));
 
     let updatedShift = state.currentShift;
@@ -568,7 +566,7 @@ export const AdminModal: React.FC<AdminModalProps> = ({
 
     const updated: AppState = {
       ...state,
-      orders: state.orders.filter(o => o.id !== id && o.code !== id),
+      orders: state.orders.filter(o => o.id !== id),
       deletedOrderIds: updatedDeletedOrderIds,
       currentShift: updatedShift,
     };

@@ -34,45 +34,81 @@ function saveArchive<T>(key: string, items: T[]): void {
 }
 
 /**
+ * Helper to ensure an order has a valid, non-empty, unique ID.
+ */
+export function ensureOrderId(o: Order): Order {
+  if (o && o.id && typeof o.id === 'string' && o.id.trim() !== '') {
+    return o;
+  }
+  const cleanCode = (o?.code || '0000').replace(/\D/g, '');
+  const timestamp = new Date(o?.createdAt || Date.now()).getTime();
+  const rand = Math.random().toString(36).substring(2, 7);
+  return {
+    ...o,
+    id: `ord_${cleanCode}_${timestamp}_${rand}`,
+  };
+}
+
+/**
+ * Filter out any numerical order codes (e.g. "0001", "0002") from deletedOrderIds.
+ * deletedOrderIds MUST strictly store unique order IDs, NEVER order codes!
+ */
+export function sanitizeDeletedOrderIds(ids: string[] = []): string[] {
+  if (!Array.isArray(ids)) return [];
+  return ids.filter(id => {
+    if (!id || typeof id !== 'string') return false;
+    const trimmed = id.trim();
+    // Reject empty, purely numerical codes (like 0001), or codes with 'T' prefix like T1234
+    if (/^\d{1,6}$/.test(trimmed)) return false;
+    if (/^T\d{4,6}$/i.test(trimmed)) return false;
+    return trimmed.length > 5;
+  });
+}
+
+/**
  * Helper to merge orders lists without losing completed status or counts,
  * while strictly honoring deletedOrderIds tombstones so deleted orders never resurrect.
+ * NEVER rejects or drops an order based on order code!
  */
 export function mergeOrdersList(
   primary: Order[] = [],
   secondary: Order[] = [],
   deletedIds: string[] = []
 ): Order[] {
-  const deletedSet = new Set(deletedIds);
+  const cleanDeletedIds = sanitizeDeletedOrderIds(deletedIds);
+  const deletedSet = new Set(cleanDeletedIds);
   const map = new Map<string, Order>();
+
   if (Array.isArray(secondary)) {
-    secondary.forEach(o => {
-      if (o && (o.id || o.code)) {
-        if (!deletedSet.has(o.id) && !deletedSet.has(o.code)) {
-          map.set(o.id || o.code, o);
-        }
+    secondary.forEach(rawO => {
+      if (!rawO) return;
+      const o = ensureOrderId(rawO);
+      if (!deletedSet.has(o.id)) {
+        map.set(o.id, o);
       }
     });
   }
+
   if (Array.isArray(primary)) {
-    primary.forEach(o => {
-      if (o && (o.id || o.code)) {
-        if (deletedSet.has(o.id) || deletedSet.has(o.code)) return;
-        const key = o.id || o.code;
-        const existing = map.get(key);
-        if (!existing) {
-          map.set(key, o);
-        } else {
-          const preferPrimary =
-            (o.status === 'completed' && existing.status !== 'completed') ||
-            ((o.billPrintedCount || 0) >= (existing.billPrintedCount || 0) &&
-             (o.labelsPrintedCount || 0) >= (existing.labelsPrintedCount || 0));
-          if (preferPrimary) {
-            map.set(key, { ...existing, ...o });
-          }
+    primary.forEach(rawO => {
+      if (!rawO) return;
+      const o = ensureOrderId(rawO);
+      if (deletedSet.has(o.id)) return;
+      const existing = map.get(o.id);
+      if (!existing) {
+        map.set(o.id, o);
+      } else {
+        const preferPrimary =
+          (o.status === 'completed' && existing.status !== 'completed') ||
+          ((o.billPrintedCount || 0) >= (existing.billPrintedCount || 0) &&
+           (o.labelsPrintedCount || 0) >= (existing.labelsPrintedCount || 0));
+        if (preferPrimary) {
+          map.set(o.id, { ...existing, ...o });
         }
       }
     });
   }
+
   return Array.from(map.values()).sort((a, b) => {
     const timeA = new Date(a.createdAt || 0).getTime();
     const timeB = new Date(b.createdAt || 0).getTime();
@@ -132,10 +168,10 @@ export function mergeStates(local: AppState, cloud: AppState): AppState {
   if (!local) return cloud;
   if (!cloud) return local;
 
-  const combinedDeletedOrderIds = Array.from(new Set([
+  const combinedDeletedOrderIds = sanitizeDeletedOrderIds(Array.from(new Set([
     ...(local.deletedOrderIds || []),
     ...(cloud.deletedOrderIds || [])
-  ]));
+  ])));
   const combinedDeletedExpenseIds = Array.from(new Set([
     ...(local.deletedExpenseIds || []),
     ...(cloud.deletedExpenseIds || [])
@@ -235,7 +271,8 @@ export const loadState = (): AppState => {
     const existingShifts = Array.isArray(parsed.shifts) ? parsed.shifts : [];
 
     // Read tombstones to guarantee deleted orders and expenses are never revived
-    const deletedOrderIds = Array.isArray(parsed.deletedOrderIds) ? parsed.deletedOrderIds : [];
+    const rawDeletedOrderIds = Array.isArray(parsed.deletedOrderIds) ? parsed.deletedOrderIds : [];
+    const deletedOrderIds = sanitizeDeletedOrderIds(rawDeletedOrderIds);
     const deletedExpenseIds = Array.isArray(parsed.deletedExpenseIds) ? parsed.deletedExpenseIds : [];
     const deletedOrderSet = new Set(deletedOrderIds);
     const deletedExpenseSet = new Set(deletedExpenseIds);
@@ -245,7 +282,10 @@ export const loadState = (): AppState => {
     const rawExpenses = existingExpenses.length > 0 ? existingExpenses : archivedExpenses;
     const finalShifts = existingShifts.length > 0 ? existingShifts : archivedShifts;
 
-    const finalOrders = rawOrders.filter(o => o && !deletedOrderSet.has(o.id) && !deletedOrderSet.has(o.code));
+    const finalOrders = rawOrders
+      .filter(Boolean)
+      .map(ensureOrderId)
+      .filter(o => !deletedOrderSet.has(o.id));
     const finalExpenses = rawExpenses.filter(e => e && !deletedExpenseSet.has(e.id));
 
     if (parsed.users && Array.isArray(parsed.users)) {

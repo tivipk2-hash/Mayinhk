@@ -343,8 +343,11 @@ export const PosLayout: React.FC<PosLayoutProps> = ({
       finalCode = generateNextOrderCode(state.orders);
     }
 
+    const uniqueOrderId = 'ord_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
+
     const finalOrder: Order = {
       ...currentOrder,
+      id: uniqueOrderId,
       code: finalCode,
       orderNumber: finalCode,
       status: 'completed',
@@ -467,17 +470,25 @@ export const PosLayout: React.FC<PosLayoutProps> = ({
   // Save Order as pending
   const handleSaveOrder = () => {
     if (currentOrder.items.length === 0) return;
+    let finalCode = currentOrder.code;
+    if (state.orders.some(o => o.code === finalCode)) {
+      finalCode = generateNextOrderCode(state.orders);
+    }
     const pendingOrder: Order = {
       ...currentOrder,
+      id: 'ord_pending_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9),
+      code: finalCode,
+      orderNumber: finalCode,
       status: 'pending',
       createdAt: new Date().toISOString(),
     };
+    const updatedOrders = [pendingOrder, ...state.orders];
     onUpdateState({
       ...state,
-      orders: [pendingOrder, ...state.orders],
+      orders: updatedOrders,
     });
     showNotification(`Đã lưu đơn tạm #${pendingOrder.code}!`);
-    handleClearOrder();
+    handleClearOrder(updatedOrders);
   };
 
   // Clear Order
@@ -486,7 +497,7 @@ export const PosLayout: React.FC<PosLayoutProps> = ({
     const nextCode = generateNextOrderCode(ordersList);
 
     const emptyOrder: Order = {
-      id: 'draft_' + Date.now(),
+      id: 'draft_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
       code: nextCode,
       orderNumber: nextCode,
       items: [],
