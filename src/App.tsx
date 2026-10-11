@@ -153,6 +153,7 @@ export default function App() {
             currentUser={currentUser}
             onOpenPos={handleOpenPos}
             onOpenAdmin={() => setShowAdminModal(true)}
+            onLogout={handleLogout}
           />
 
           <main className="flex-1">

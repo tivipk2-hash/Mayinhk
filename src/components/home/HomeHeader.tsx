@@ -1,6 +1,6 @@
 import React from 'react';
 import { HomepageConfig, User } from '../../types';
-import { Clock, Wifi, UserCheck, ShieldCheck, Phone, MapPin, Coffee, FileText } from 'lucide-react';
+import { Clock, Wifi, UserCheck, ShieldCheck, Phone, MapPin, Coffee, FileText, LogOut } from 'lucide-react';
 import { CloudSyncBadge } from '../common/CloudSyncBadge';
 
 interface HomeHeaderProps {
@@ -8,6 +8,7 @@ interface HomeHeaderProps {
   currentUser: User | null;
   onOpenPos: () => void;
   onOpenAdmin: () => void;
+  onLogout?: () => void;
 }
 
 export const HomeHeader: React.FC<HomeHeaderProps> = ({
@@ -15,6 +16,7 @@ export const HomeHeader: React.FC<HomeHeaderProps> = ({
   currentUser,
   onOpenPos,
   onOpenAdmin,
+  onLogout,
 }) => {
   return (
     <header className="sticky top-0 z-40 bg-neutral-950/90 backdrop-blur-md border-b border-amber-950/60 shadow-lg">
@@ -75,8 +77,10 @@ export const HomeHeader: React.FC<HomeHeaderProps> = ({
             </button>
           )}
 
-          {/* Multi-Device Cloud Sync Status */}
-          <CloudSyncBadge />
+          {/* Multi-Device Cloud Sync Status - Chỉ hiển thị khi nhân viên đã đăng nhập */}
+          {currentUser && (
+            <CloudSyncBadge />
+          )}
 
           {/* Button "Nhân Viên" on top right as requested */}
           <button
@@ -84,9 +88,20 @@ export const HomeHeader: React.FC<HomeHeaderProps> = ({
             className="px-4 sm:px-5 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-gradient-to-r from-amber-700 via-orange-600 to-amber-600 hover:from-amber-600 hover:to-orange-500 text-white shadow-lg shadow-orange-950/50 border border-orange-400/40 flex items-center gap-2 transition-all hover:scale-105 active:scale-95 cursor-pointer"
           >
             <UserCheck className="w-4 h-4 text-amber-200" />
-            <span>Nhân Viên</span>
+            <span>{currentUser ? currentUser.name : 'Nhân Viên'}</span>
             <span className="text-amber-200 text-xs">›</span>
           </button>
+
+          {/* Nút đăng xuất khi nhân viên đang đăng nhập */}
+          {currentUser && onLogout && (
+            <button
+              onClick={onLogout}
+              className="p-2 rounded-xl bg-neutral-900/90 hover:bg-neutral-800 text-neutral-400 hover:text-red-400 border border-neutral-700/60 transition-colors cursor-pointer"
+              title="Đăng xuất nhân viên"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          )}
         </div>
       </div>
     </header>

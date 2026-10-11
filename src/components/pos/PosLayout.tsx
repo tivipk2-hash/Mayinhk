@@ -284,6 +284,30 @@ export const PosLayout: React.FC<PosLayoutProps> = ({
     showNotification(`Đã lưu ghi chú cho ${updatedItem.name}!`);
   };
 
+  // Handle applying discount to current order
+  const handleApplyDiscount = (discount: number) => {
+    const updated = recalculateOrder(currentOrder.items, discount);
+    setCurrentOrder(updated);
+    broadcastToCustomerDisplay({
+      order: updated,
+      status: updated.items.length > 0 ? 'ordering' : 'idle',
+      lastUpdated: Date.now(),
+      cashierName: currentUser.name,
+      vietQr: state.billTemplate?.vietQr,
+      storeName: state.homepage?.shopName,
+      storeAddress: state.homepage?.address,
+      storeHotline: state.homepage?.hotline,
+      wifiSsid: state.homepage?.wifiSsid,
+      wifiPass: state.homepage?.wifiPass,
+      lastAction: 'quantity_changed',
+    });
+    if (discount > 0) {
+      showNotification(`Đã áp dụng giảm giá ${formatVND(discount)}đ!`, 'success');
+    } else {
+      showNotification('Đã xoá giảm giá.', 'info');
+    }
+  };
+
   // Print Labels (Direct send to QZ Tray without modal confirmation)
   const handlePrintLabels = async () => {
     if (currentOrder.items.length === 0) return;
@@ -654,7 +678,7 @@ export const PosLayout: React.FC<PosLayoutProps> = ({
             onUpdateQuantity={handleUpdateQuantity}
             onRemoveItem={handleRemoveItem}
             onOpenNoteModal={(idx) => setEditingNoteItemIndex(idx)}
-            onOpenDiscount={() => {}}
+            onApplyDiscount={handleApplyDiscount}
             onToggleOrderType={(type) => setCurrentOrder({ ...currentOrder, type })}
             onChangeTableNumber={(tableNumber) => setCurrentOrder({ ...currentOrder, tableNumber })}
             onChangePaymentMethod={(paymentMethod) => setCurrentOrder({ ...currentOrder, paymentMethod })}
@@ -676,7 +700,7 @@ export const PosLayout: React.FC<PosLayoutProps> = ({
                 onUpdateQuantity={handleUpdateQuantity}
                 onRemoveItem={handleRemoveItem}
                 onOpenNoteModal={(idx) => setEditingNoteItemIndex(idx)}
-                onOpenDiscount={() => {}}
+                onApplyDiscount={handleApplyDiscount}
                 onToggleOrderType={(type) => setCurrentOrder({ ...currentOrder, type })}
                 onChangeTableNumber={(tableNumber) => setCurrentOrder({ ...currentOrder, tableNumber })}
                 onChangePaymentMethod={(paymentMethod) => setCurrentOrder({ ...currentOrder, paymentMethod })}

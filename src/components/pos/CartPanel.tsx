@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Order, OrderItem } from '../../types';
 import { formatVND } from '../../services/qzService';
+import { DiscountModal } from './DiscountModal';
 import {
   Trash2,
   Edit3,
@@ -26,7 +27,8 @@ interface CartPanelProps {
   onUpdateQuantity: (index: number, delta: number) => void;
   onRemoveItem: (index: number) => void;
   onOpenNoteModal: (index: number) => void;
-  onOpenDiscount: () => void;
+  onOpenDiscount?: () => void;
+  onApplyDiscount: (discount: number) => void;
   onToggleOrderType: (type: 'takeaway' | 'dinein') => void;
   onChangeTableNumber: (table: string) => void;
   onChangePaymentMethod: (method: 'cash' | 'transfer') => void;
@@ -45,6 +47,7 @@ export const CartPanel: React.FC<CartPanelProps> = ({
   onRemoveItem,
   onOpenNoteModal,
   onOpenDiscount,
+  onApplyDiscount,
   onToggleOrderType,
   onChangeTableNumber,
   onChangePaymentMethod,
@@ -54,6 +57,7 @@ export const CartPanel: React.FC<CartPanelProps> = ({
   onClearOrder,
   onCloseMobile,
 }) => {
+  const [showDiscountModal, setShowDiscountModal] = useState(false);
   const totalItemCount = order.items.reduce((s, i) => s + i.quantity, 0);
 
   return (
@@ -255,26 +259,56 @@ export const CartPanel: React.FC<CartPanelProps> = ({
       </div>
 
       {/* Cart Summary Totals */}
-      <div className="p-2.5 bg-neutral-100 border-t border-neutral-300 space-y-1 text-xs">
+      <div className="p-2.5 bg-neutral-100 border-t border-neutral-300 space-y-1.5 text-xs">
         <div className="flex justify-between text-neutral-600">
           <span>Tiền hàng ({totalItemCount} món):</span>
           <span className="font-mono font-semibold">{formatVND(order.subtotal)}đ</span>
         </div>
 
-        {order.discount > 0 && (
-          <div className="flex justify-between text-emerald-700 font-semibold">
-            <span className="flex items-center gap-1">
-              <Percent className="w-3.5 h-3.5" /> Giảm giá:
-            </span>
-            <span className="font-mono">-{formatVND(order.discount)}đ</span>
-          </div>
-        )}
+        {/* DÒNG CHIẾT KHẤU & TỔNG TIỀN (NẰM GỌN GÀNG CÙNG TRÊN MỘT HÀNG NGANG ĐỂ TIẾT KIỆM DIỆN TÍCH) */}
+        <div className="pt-1.5 border-t border-neutral-300 flex items-center justify-between gap-2">
+          {/* Bên trái: Nút Chiết Khấu chữ đỏ như ảnh chietkhau.png + Số tiền giảm nếu có */}
+          <div className="flex items-center gap-1.5 min-w-0">
+            <button
+              type="button"
+              onClick={() => {
+                setShowDiscountModal(true);
+                onOpenDiscount?.();
+              }}
+              className="text-red-600 hover:text-red-700 active:scale-95 font-bold text-xs sm:text-[13px] hover:underline cursor-pointer select-none transition-all shrink-0 flex items-center gap-1"
+              title="Nhấp để nhập số tiền giảm giá hoặc chọn giảm 10%, 20%, 50%"
+            >
+              <span>Chiết Khấu</span>
+            </button>
 
-        <div className="pt-1 border-t border-neutral-300 flex justify-between items-baseline">
-          <span className="text-xs font-bold text-neutral-900 uppercase">TỔNG CỘNG:</span>
-          <span className="text-base font-black text-blue-700 font-mono">
-            {formatVND(order.total)}đ
-          </span>
+            {/* Khi đã áp dụng giảm giá, hiển thị số tiền giảm ngay bên cạnh nút Chiết Khấu trên cùng hàng ngang */}
+            {order.discount > 0 && (
+              <span className="inline-flex items-center gap-1 text-[11px] font-bold font-mono text-emerald-800 bg-emerald-100 border border-emerald-300/80 px-1.5 py-0.5 rounded-md shrink-0">
+                <span>-{formatVND(order.discount)}đ</span>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onApplyDiscount(0);
+                  }}
+                  className="hover:text-red-600 ml-0.5 cursor-pointer text-neutral-500 hover:scale-110 transition-transform font-bold"
+                  title="Xóa chiết khấu về 0đ"
+                >
+                  ✕
+                </button>
+              </span>
+            )}
+          </div>
+
+          {/* Bên phải: TỔNG (đã đổi từ "TỔNG CỘNG" thành "TỔNG" để gọn gàng hơn) */}
+          <div className="flex items-baseline gap-1.5 shrink-0 text-right">
+            <span className="text-xs font-bold text-neutral-900 uppercase tracking-tight">
+              TỔNG:
+            </span>
+            <span className="text-base sm:text-lg font-black text-blue-700 font-mono tracking-tight">
+              {formatVND(order.total)}đ
+            </span>
+          </div>
         </div>
       </div>
 
@@ -380,6 +414,15 @@ export const CartPanel: React.FC<CartPanelProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Bảng nhập liệu Chiết Khấu / Giảm Giá bung lên khi bấm nút Chiết Khấu */}
+      <DiscountModal
+        isOpen={showDiscountModal}
+        onClose={() => setShowDiscountModal(false)}
+        subtotal={order.subtotal}
+        currentDiscount={order.discount}
+        onApplyDiscount={onApplyDiscount}
+      />
     </aside>
   );
 };
