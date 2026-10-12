@@ -34,7 +34,7 @@ export const VintageTv: React.FC<VintageTvProps> = ({ channels }) => {
       </div>
 
       <div className="text-center mb-6">
-        <h1 className="text-3xl sm:text-5xl md:text-6xl font-black tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-amber-400 to-amber-600 font-serif drop-shadow-[0_2px_12px_rgba(217,119,6,0.3)]">
+        <h1 className="text-3xl sm:text-5xl md:text-6xl font-black tracking-normal sm:tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-amber-400 to-amber-600 font-serif drop-shadow-[0_2px_12px_rgba(217,119,6,0.3)]">
           HONGKONG CỔ TRẤN
         </h1>
         <p className="mt-2 text-base sm:text-lg text-amber-100/70 font-light italic font-serif">

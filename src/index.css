@@ -1,5 +1,24 @@
 @import "tailwindcss";
 
+@theme {
+  --font-serif: "Playfair Display", "Noto Serif", "Merriweather", serif;
+  --font-sans: "Be Vietnam Pro", system-ui, -apple-system, sans-serif;
+}
+
+body {
+  font-family: "Be Vietnam Pro", system-ui, -apple-system, sans-serif;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+.font-serif {
+  font-family: "Playfair Display", "Noto Serif", "Merriweather", serif !important;
+}
+
+.font-noto-serif {
+  font-family: "Noto Serif", "Playfair Display", "Merriweather", serif !important;
+}
+
 @keyframes lanternSway {
   0% {
     transform: rotate(-3.5deg);
