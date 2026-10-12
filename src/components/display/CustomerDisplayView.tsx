@@ -185,67 +185,121 @@ export const CustomerDisplayView: React.FC<CustomerDisplayViewProps> = ({ state 
     return order.items.reduce((sum, it) => sum + it.quantity, 0);
   }, [order]);
 
+  // Column distribution logic:
+  // - 1 to 6 items: 1 column
+  // - 7 to 12 items: 2 columns (items 1-6 in col 1, items 7-12 in col 2)
+  // - 13+ items: 3 columns (items 13+ in col 3, with auto font scaling to fit single screen)
+  const columns = useMemo(() => {
+    if (!order || !order.items || order.items.length === 0) return [];
+    const items = order.items;
+    const count = items.length;
+
+    if (count <= 6) {
+      return [items.map((item, idx) => ({ item, globalIdx: idx }))];
+    }
+
+    if (count <= 12) {
+      const col1 = items.slice(0, 6).map((item, idx) => ({ item, globalIdx: idx }));
+      const col2 = items.slice(6).map((item, idx) => ({ item, globalIdx: idx + 6 }));
+      return [col1, col2];
+    }
+
+    // count > 12: 3 columns
+    // For 13-18 items: 6 in col 1, 6 in col 2, remaining in col 3
+    // For 19+ items: balanced evenly across 3 columns
+    const perCol = Math.max(6, Math.ceil(count / 3));
+    const col1 = items.slice(0, perCol).map((item, idx) => ({ item, globalIdx: idx }));
+    const col2 = items.slice(perCol, perCol * 2).map((item, idx) => ({ item, globalIdx: idx + perCol }));
+    const col3 = items.slice(perCol * 2).map((item, idx) => ({ item, globalIdx: idx + perCol * 2 }));
+    return [col1, col2, col3];
+  }, [order?.items]);
+
+  const columnCount = columns.length;
+  const maxItemsInCol = useMemo(() => {
+    if (columns.length === 0) return 0;
+    return Math.max(...columns.map((c) => c.length));
+  }, [columns]);
+
+  // Adaptive font and spacing classes based on column count and item density
+  const sizing = useMemo(() => {
+    if (columnCount === 1) {
+      return {
+        cardPad: 'p-3 sm:p-3.5 rounded-2xl',
+        badge: 'w-8 h-8 rounded-xl text-sm font-black',
+        name: 'text-xl sm:text-2xl font-black font-serif',
+        note: 'text-base sm:text-lg italic font-bold text-amber-400',
+        size: 'text-xs sm:text-sm px-2 py-0.5',
+        unitPrice: 'text-xs sm:text-sm',
+        qtyBadge: 'px-3 py-1 rounded-xl text-base sm:text-xl font-black',
+        subtotal: 'w-28 sm:w-36 text-xl sm:text-2xl md:text-3xl font-black font-mono',
+        gap: 'gap-2.5 sm:gap-3',
+      };
+    }
+
+    if (columnCount === 2) {
+      return {
+        cardPad: 'p-2 sm:p-2.5 rounded-xl',
+        badge: 'w-7 h-7 rounded-lg text-xs font-black',
+        name: 'text-base sm:text-lg font-black font-serif leading-snug',
+        note: 'text-xs sm:text-sm italic font-bold text-amber-400',
+        size: 'text-[11px] px-1.5 py-0.5',
+        unitPrice: 'text-[11px] sm:text-xs',
+        qtyBadge: 'px-2 py-0.5 rounded-lg text-sm sm:text-base font-black',
+        subtotal: 'shrink-0 text-right text-base sm:text-lg md:text-xl font-black font-mono',
+        gap: 'gap-2',
+      };
+    }
+
+    // 3 columns:
+    if (maxItemsInCol <= 6) {
+      // Standard 3 columns (13-18 items)
+      return {
+        cardPad: 'p-1.5 sm:p-2 rounded-xl',
+        badge: 'w-6 h-6 rounded-lg text-[11px] font-black',
+        name: 'text-xs sm:text-sm md:text-base font-bold font-serif leading-snug line-clamp-1',
+        note: 'text-[10px] sm:text-xs italic font-semibold text-amber-400',
+        size: 'text-[9px] sm:text-[10px] px-1 py-0.2',
+        unitPrice: 'text-[10px] sm:text-[11px]',
+        qtyBadge: 'px-1.5 py-0.5 rounded-lg text-xs sm:text-sm font-black',
+        subtotal: 'shrink-0 text-right text-xs sm:text-sm md:text-base font-black font-mono',
+        gap: 'gap-1.5',
+      };
+    } else if (maxItemsInCol <= 8) {
+      // Denser 3 columns (19-24 items): auto-shrink font
+      return {
+        cardPad: 'p-1.5 sm:p-1.5 rounded-lg',
+        badge: 'w-5 h-5 rounded-md text-[10px] font-black',
+        name: 'text-[11px] sm:text-xs md:text-sm font-bold font-serif leading-tight line-clamp-1',
+        note: 'text-[9px] sm:text-[10px] italic font-semibold text-amber-400',
+        size: 'text-[9px] px-1 py-0',
+        unitPrice: 'text-[9px]',
+        qtyBadge: 'px-1 py-0.5 rounded text-[11px] sm:text-xs font-black',
+        subtotal: 'shrink-0 text-right text-[11px] sm:text-xs md:text-sm font-black font-mono',
+        gap: 'gap-1',
+      };
+    } else {
+      // Ultra-dense 3 columns (25+ items): ultra auto-shrink font
+      return {
+        cardPad: 'py-1 px-1.5 rounded-md',
+        badge: 'w-4 h-4 rounded text-[9px] font-black',
+        name: 'text-[10px] sm:text-[11px] font-bold font-serif leading-none line-clamp-1',
+        note: 'text-[8px] sm:text-[9px] italic font-semibold text-amber-400',
+        size: 'text-[8px] px-0.5 py-0',
+        unitPrice: 'text-[8px]',
+        qtyBadge: 'px-1 py-0 rounded text-[9px] sm:text-[10px] font-black',
+        subtotal: 'shrink-0 text-right text-[10px] sm:text-[11px] font-black font-mono',
+        gap: 'gap-1',
+      };
+    }
+  }, [columnCount, maxItemsInCol]);
+
   return (
-    <div className="min-h-screen w-screen bg-gradient-to-b from-[#240909] via-[#1a0606] to-[#0f0404] text-neutral-100 flex flex-col font-sans select-none overflow-hidden relative">
+    <div className="h-screen w-screen max-h-screen bg-gradient-to-b from-[#240909] via-[#1a0606] to-[#0f0404] text-neutral-100 flex flex-col font-sans select-none overflow-hidden relative">
       {/* Background Hong Kong Tea House Ambient Lighting & Glow */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden opacity-45 z-0">
         <div className="absolute -top-32 -left-32 w-[450px] h-[450px] rounded-full bg-red-600/25 blur-3xl animate-pulse" />
         <div className="absolute -bottom-32 -right-32 w-[450px] h-[450px] rounded-full bg-amber-500/25 blur-3xl animate-pulse" />
         <div className="absolute top-1/3 left-1/2 -translate-x-1/2 w-[700px] h-[400px] rounded-full bg-amber-700/15 blur-[130px]" />
-      </div>
-
-      {/* DECORATIVE TOP EAVE ROOF BAR WITH TRADITIONAL CHINESE RED LANTERNS */}
-      <div className="relative z-20 w-full pointer-events-none flex justify-between items-start px-4 sm:px-8 -mb-4">
-        {/* Left Lantern Cluster */}
-        <div className="flex items-start gap-2 sm:gap-4 drop-shadow-2xl">
-          <ChineseLantern
-            size="md"
-            cordLength={22}
-            swayDuration={4.2}
-            swayDelay={0}
-            character="福"
-          />
-          <ChineseLantern
-            size="sm"
-            cordLength={34}
-            swayDuration={3.6}
-            swayDelay={0.8}
-            character="吉"
-            className="hidden sm:inline-block"
-          />
-        </div>
-
-        {/* Center decorative garland cord with subtle mini lantern */}
-        <div className="hidden lg:flex items-center gap-6 mt-1 opacity-85">
-          <div className="h-[2px] w-24 bg-gradient-to-r from-transparent via-amber-400 to-amber-500" />
-          <ChineseLantern
-            size="sm"
-            cordLength={16}
-            swayDuration={4.5}
-            swayDelay={1.5}
-            character="茶"
-          />
-          <div className="h-[2px] w-24 bg-gradient-to-l from-transparent via-amber-400 to-amber-500" />
-        </div>
-
-        {/* Right Lantern Cluster */}
-        <div className="flex items-start gap-2 sm:gap-4 drop-shadow-2xl justify-end">
-          <ChineseLantern
-            size="sm"
-            cordLength={34}
-            swayDuration={3.8}
-            swayDelay={1.2}
-            character="喜"
-            className="hidden sm:inline-block"
-          />
-          <ChineseLantern
-            size="md"
-            cordLength={22}
-            swayDuration={4.4}
-            swayDelay={0.4}
-            character="春"
-          />
-        </div>
       </div>
 
       {/* TOP HEADER BAR */}
@@ -382,23 +436,28 @@ export const CustomerDisplayView: React.FC<CustomerDisplayViewProps> = ({ state 
           </div>
         ) : isOrdering ? (
           /* ACTIVE ORDER SCREEN: Cashier is currently ringing up drinks */
-          <div className="flex-1 flex flex-col lg:flex-row overflow-hidden p-3 md:p-5 gap-4 md:gap-6">
+          <div className="flex-1 min-h-0 flex flex-col lg:flex-row overflow-hidden p-3 md:p-4 gap-3 md:gap-4">
             {/* LEFT COLUMN: ORDER ITEMS LIST */}
-            <div className="flex-1 flex flex-col bg-[#1c0808]/90 backdrop-blur-md rounded-3xl border-2 border-amber-600/40 shadow-2xl overflow-hidden">
+            <div className="flex-1 min-h-0 flex flex-col bg-[#1c0808]/90 backdrop-blur-md rounded-3xl border-2 border-amber-600/40 shadow-2xl overflow-hidden">
               {/* Card Header */}
-              <div className="px-5 py-3.5 bg-gradient-to-r from-[#2c0e0e] via-[#220909] to-[#2c0e0e] border-b border-amber-600/40 flex items-center justify-between shadow-sm">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-300">
+              <div className="px-4 sm:px-5 py-2.5 sm:py-3 bg-gradient-to-r from-[#2c0e0e] via-[#220909] to-[#2c0e0e] border-b border-amber-600/40 flex items-center justify-between shadow-sm shrink-0">
+                <div className="flex items-center gap-2.5 sm:gap-3">
+                  <div className="p-2 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-300 shrink-0">
                     <ShoppingBag className="w-5 h-5" />
                   </div>
                   <div>
-                    <div className="flex items-center gap-2.5">
-                      <h2 className="font-bold text-lg text-amber-100 font-serif">
+                    <div className="flex items-center gap-2">
+                      <h2 className="font-bold text-base sm:text-lg text-amber-100 font-serif">
                         Danh Sách Món Đã Chọn
                       </h2>
                       <span className="px-2.5 py-0.5 rounded-full bg-red-900/80 text-amber-300 text-xs font-black border border-amber-500/40">
                         {totalItemCount} món
                       </span>
+                      {columnCount > 1 && (
+                        <span className="hidden sm:inline-block px-2 py-0.5 rounded-md bg-amber-950/90 text-amber-300 text-[11px] font-mono font-bold border border-amber-600/40">
+                          {columnCount} cột
+                        </span>
+                      )}
                     </div>
                     <p className="text-xs text-amber-200/70">
                       Đơn #{order.code} • Thu ngân: <span className="text-amber-100 font-semibold">{order.staffName || 'Thu Ngân'}</span>
@@ -406,73 +465,98 @@ export const CustomerDisplayView: React.FC<CustomerDisplayViewProps> = ({ state 
                   </div>
                 </div>
 
-                <div className="text-xs font-mono font-bold text-amber-300 bg-[#351212] px-3.5 py-1.5 rounded-xl border border-amber-600/40 shadow-inner">
+                <div className="text-xs font-mono font-bold text-amber-300 bg-[#351212] px-3 py-1 rounded-xl border border-amber-600/40 shadow-inner shrink-0">
                   {order.type === 'takeaway' ? '🥤 Mang Về' : '🪑 Dùng Tại Quán'}
                 </div>
               </div>
 
-              {/* Items Table / Scroller */}
-              <div className="flex-1 overflow-y-auto p-3.5 sm:p-4 space-y-3">
-                {order.items.map((item, idx) => (
-                  <div
-                    key={`${item.itemId}_${idx}_${item.size || ''}_${item.note || ''}`}
-                    className={`flex items-center justify-between p-4 rounded-2xl border-2 transition-all duration-300 ${
-                      lastItemAdded === item.name
-                        ? 'bg-gradient-to-r from-[#421717] to-[#2f1010] border-amber-400 shadow-[0_0_20px_rgba(245,158,11,0.35)] scale-[1.01]'
-                        : 'bg-[#270e0e]/85 hover:bg-[#321313]/90 border-amber-800/40 hover:border-amber-500/50 shadow-md'
-                    }`}
-                  >
-                    {/* Item info */}
-                    <div className="flex items-start gap-3.5 min-w-0 flex-1">
-                      {/* Item index badge */}
-                      <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-amber-500 to-red-600 text-white font-black font-mono flex items-center justify-center text-sm shrink-0 mt-0.5 shadow-md border border-amber-300/40">
-                        {idx + 1}
-                      </div>
+              {/* Dynamic Multi-Column Items Display (No page scrolling) */}
+              <div className="flex-1 min-h-0 p-2.5 sm:p-3 overflow-hidden flex flex-col justify-start">
+                <div
+                  className={`grid h-full ${
+                    columnCount === 1
+                      ? 'grid-cols-1'
+                      : columnCount === 2
+                      ? 'grid-cols-1 sm:grid-cols-2'
+                      : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3'
+                  } gap-2.5 sm:gap-3`}
+                >
+                  {columns.map((colItems, colIdx) => (
+                    <div
+                      key={colIdx}
+                      className={`flex flex-col ${sizing.gap} min-h-0 overflow-hidden`}
+                    >
+                      {colItems.map(({ item, globalIdx }) => {
+                        const isHighlighted = lastItemAdded === item.name;
+                        return (
+                          <div
+                            key={`${item.itemId}_${globalIdx}_${item.size || ''}_${item.note || ''}`}
+                            className={`flex items-center justify-between border-2 transition-all duration-300 ${sizing.cardPad} ${
+                              isHighlighted
+                                ? 'bg-gradient-to-r from-[#421717] to-[#2f1010] border-amber-400 shadow-[0_0_20px_rgba(245,158,11,0.35)] scale-[1.01]'
+                                : 'bg-[#270e0e]/85 hover:bg-[#321313]/90 border-amber-800/40 hover:border-amber-500/50 shadow-md'
+                            }`}
+                          >
+                            {/* Item info */}
+                            <div className="flex items-start gap-2 sm:gap-3 min-w-0 flex-1 mr-2">
+                              {/* Item index badge */}
+                              <div
+                                className={`${sizing.badge} bg-gradient-to-br from-amber-500 to-red-600 text-white font-mono flex items-center justify-center shrink-0 mt-0.5 shadow-md border border-amber-300/40`}
+                              >
+                                {globalIdx + 1}
+                              </div>
 
-                      <div className="min-w-0 flex-1 pr-3">
-                        {/* ITEM NAME (LARGER FONT) & NOTE (IN PARENTHESES IMMEDIATELY AFTER NAME) */}
-                        <div className="flex items-baseline gap-2 flex-wrap">
-                          <span className="font-black text-xl sm:text-2xl md:text-3xl text-amber-50 font-serif tracking-wide leading-tight drop-shadow-sm">
-                            {item.name}
-                          </span>
+                              <div className="min-w-0 flex-1">
+                                {/* Item Name + Note + Size */}
+                                <div className="flex items-baseline gap-1.5 flex-wrap">
+                                  <span
+                                    className={`${sizing.name} text-amber-50 drop-shadow-sm`}
+                                    title={item.name}
+                                  >
+                                    {item.name}
+                                  </span>
 
-                          {/* Note in parentheses right after the item name */}
-                          {item.note && (
-                            <span className="font-bold text-base sm:text-xl text-amber-400 italic">
-                              ({item.note})
-                            </span>
-                          )}
+                                  {/* Note in parentheses immediately after name */}
+                                  {item.note && (
+                                    <span className={sizing.note}>
+                                      ({item.note})
+                                    </span>
+                                  )}
 
-                          {/* Size Badge */}
-                          {item.size && (
-                            <span className="text-xs sm:text-sm font-mono font-bold px-2 py-0.5 rounded-lg bg-red-950/80 text-amber-200 border border-amber-500/40">
-                              Size {item.size}
-                            </span>
-                          )}
-                        </div>
+                                  {/* Size Badge */}
+                                  {item.size && (
+                                    <span className={`${sizing.size} font-mono font-bold rounded bg-red-950/80 text-amber-200 border border-amber-500/40`}>
+                                      Size {item.size}
+                                    </span>
+                                  )}
+                                </div>
 
-                        {/* Unit price */}
-                        <div className="text-xs sm:text-sm text-amber-200/70 mt-1 font-mono font-medium">
-                          {formatVND(item.price)} / phần
-                        </div>
-                      </div>
+                                {/* Unit price */}
+                                <div className={`${sizing.unitPrice} text-amber-200/70 font-mono font-medium mt-0.5`}>
+                                  {formatVND(item.price)} / phần
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Quantity & Subtotal */}
+                            <div className="flex items-center gap-2 sm:gap-3 shrink-0 text-right">
+                              <div className={`${sizing.qtyBadge} bg-gradient-to-r from-amber-500/20 to-red-500/20 border border-amber-500/50 font-mono text-amber-300 shadow-inner`}>
+                                x{item.quantity}
+                              </div>
+                              <div className={`${sizing.subtotal} text-amber-300 drop-shadow-sm`}>
+                                {formatVND(item.price * item.quantity)}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
-
-                    {/* Quantity & Subtotal */}
-                    <div className="flex items-center gap-3 sm:gap-5 shrink-0 text-right">
-                      <div className="px-3 py-1 rounded-xl bg-gradient-to-r from-amber-500/20 to-red-500/20 border border-amber-500/50 font-mono font-black text-base sm:text-xl text-amber-300 shadow-inner">
-                        x{item.quantity}
-                      </div>
-                      <div className="w-28 sm:w-36 font-mono font-black text-xl sm:text-2xl md:text-3xl text-amber-300 drop-shadow-sm">
-                        {formatVND(item.price * item.quantity)}
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
 
               {/* Bottom Quote inside order card */}
-              <div className="px-6 py-3 bg-[#170505]/95 border-t border-amber-600/40 flex items-center justify-between text-xs text-amber-200/80">
+              <div className="px-4 sm:px-6 py-2 sm:py-2.5 bg-[#170505]/95 border-t border-amber-600/40 flex items-center justify-between text-xs text-amber-200/80 shrink-0">
                 <div className="flex items-center gap-2 text-amber-400 font-serif italic text-sm font-bold">
                   <Heart className="w-4 h-4 fill-amber-500/40 text-amber-400" />
                   <span>"Thanks for your order"</span>
@@ -484,13 +568,17 @@ export const CustomerDisplayView: React.FC<CustomerDisplayViewProps> = ({ state 
             </div>
 
             {/* RIGHT COLUMN: TOTALS & VIETQR PAYMENT */}
-            <div className="w-full lg:w-96 flex flex-col gap-4 shrink-0">
+            <div
+              className={`w-full ${
+                columnCount === 3 ? 'lg:w-80 xl:w-96' : 'lg:w-96'
+              } flex flex-col gap-3 shrink-0 min-h-0 overflow-hidden justify-between`}
+            >
               {/* Total Card */}
-              <div className="bg-gradient-to-br from-[#2f0e0e] via-[#220909] to-[#190606] rounded-3xl border-2 border-amber-500/50 p-5 sm:p-6 shadow-2xl flex flex-col justify-between relative overflow-hidden">
+              <div className="bg-gradient-to-br from-[#2f0e0e] via-[#220909] to-[#190606] rounded-3xl border-2 border-amber-500/50 p-4 sm:p-5 shadow-2xl flex flex-col justify-between relative overflow-hidden shrink-0">
                 {/* Subtle corner badge accent */}
                 <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/10 rounded-full blur-2xl pointer-events-none" />
 
-                <div className="space-y-3">
+                <div className="space-y-2.5">
                   <div className="flex justify-between items-center text-sm text-amber-200/80">
                     <span className="font-medium">Tạm tính ({totalItemCount} món):</span>
                     <span className="font-mono font-bold text-neutral-100 text-base">
@@ -507,23 +595,23 @@ export const CustomerDisplayView: React.FC<CustomerDisplayViewProps> = ({ state 
                     </div>
                   )}
 
-                  <div className="h-[2px] bg-gradient-to-r from-transparent via-amber-500/50 to-transparent my-2" />
+                  <div className="h-[2px] bg-gradient-to-r from-transparent via-amber-500/50 to-transparent my-1.5" />
 
                   {/* HUGE TOTAL DISPLAY */}
                   <div>
                     <span className="block text-xs uppercase font-black text-amber-400 tracking-widest">
                       TỔNG TIỀN THANH TOÁN
                     </span>
-                    <div className="text-4xl sm:text-5xl lg:text-6xl font-mono font-black text-amber-300 drop-shadow-[0_2px_18px_rgba(245,158,11,0.5)] mt-1 tracking-tight">
+                    <div className="text-3xl sm:text-4xl lg:text-5xl font-mono font-black text-amber-300 drop-shadow-[0_2px_18px_rgba(245,158,11,0.5)] mt-0.5 tracking-tight">
                       {formatVND(order.total || 0)}
                     </div>
                   </div>
                 </div>
 
                 {/* Payment Method Badge */}
-                <div className="mt-4 pt-3 border-t border-amber-700/40 flex items-center justify-between text-xs">
+                <div className="mt-3 pt-2.5 border-t border-amber-700/40 flex items-center justify-between text-xs">
                   <span className="text-amber-200/80 font-medium">Hình thức:</span>
-                  <span className="font-bold px-3 py-1 rounded-lg bg-red-950/80 text-amber-300 border border-amber-500/40">
+                  <span className="font-bold px-2.5 py-0.5 rounded-lg bg-red-950/80 text-amber-300 border border-amber-500/40">
                     {order.paymentMethod === 'transfer' ? 'Chuyển Khoản' : 'Tiền Mặt Tại Quầy'}
                   </span>
                 </div>
@@ -531,17 +619,17 @@ export const CustomerDisplayView: React.FC<CustomerDisplayViewProps> = ({ state 
 
               {/* VietQR Dynamic Payment Card (If Configured) */}
               {vietQrUrl ? (
-                <div className="flex-1 bg-[#220a0a]/90 rounded-3xl border-2 border-amber-500/40 p-4 shadow-xl flex flex-col items-center justify-center text-center">
-                  <div className="flex items-center gap-2 text-xs font-black text-amber-300 mb-2 uppercase tracking-wide">
+                <div className="flex-1 min-h-0 bg-[#220a0a]/90 rounded-3xl border-2 border-amber-500/40 p-3 sm:p-4 shadow-xl flex flex-col items-center justify-center text-center">
+                  <div className="flex items-center gap-2 text-xs font-black text-amber-300 mb-1.5 uppercase tracking-wide">
                     <QrCode className="w-4 h-4 text-amber-400" />
                     <span>QUÉT MÃ VIETQR ĐỂ THANH TOÁN</span>
                   </div>
 
-                  <div className="p-2.5 bg-white rounded-2xl shadow-xl border-2 border-amber-400 inline-block mb-2">
+                  <div className="p-2 bg-white rounded-2xl shadow-xl border-2 border-amber-400 inline-block mb-1.5">
                     <img
                       src={vietQrUrl}
                       alt="VietQR Transfer"
-                      className="w-44 h-44 object-contain"
+                      className="w-32 h-32 sm:w-36 sm:h-36 md:w-40 md:h-40 object-contain"
                     />
                   </div>
 
@@ -559,8 +647,8 @@ export const CustomerDisplayView: React.FC<CustomerDisplayViewProps> = ({ state 
                 </div>
               ) : (
                 /* Cashier ready banner */
-                <div className="flex-1 bg-[#220a0a]/70 rounded-3xl border border-amber-700/40 p-5 flex flex-col items-center justify-center text-center">
-                  <Store className="w-10 h-10 text-amber-400 mb-2" />
+                <div className="flex-1 min-h-0 bg-[#220a0a]/70 rounded-3xl border border-amber-700/40 p-4 flex flex-col items-center justify-center text-center">
+                  <Store className="w-9 h-9 text-amber-400 mb-2" />
                   <p className="font-bold text-amber-100 text-sm font-serif">
                     {state.homepage?.shopName || 'HongKong Cổ Trấn Quán'}
                   </p>
@@ -571,8 +659,8 @@ export const CustomerDisplayView: React.FC<CustomerDisplayViewProps> = ({ state 
               )}
 
               {/* THANKS FOR YOUR ORDER CARD */}
-              <div className="bg-gradient-to-r from-red-950 via-[#3a1313] to-amber-950 rounded-2xl border-2 border-amber-500/50 p-4 text-center shadow-xl">
-                <p className="text-lg font-black text-amber-300 font-serif tracking-wide drop-shadow-sm">
+              <div className="bg-gradient-to-r from-red-950 via-[#3a1313] to-amber-950 rounded-2xl border-2 border-amber-500/50 p-3 sm:p-3.5 text-center shadow-xl shrink-0">
+                <p className="text-base sm:text-lg font-black text-amber-300 font-serif tracking-wide drop-shadow-sm">
                   Thanks for your order!
                 </p>
                 <p className="text-xs text-amber-100/90 font-serif italic mt-0.5">

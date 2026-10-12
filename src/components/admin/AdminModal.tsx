@@ -31,6 +31,9 @@ import { CloudSyncBadge } from '../common/CloudSyncBadge';
 import { VIETNAMESE_BANKS } from '../../services/vietqr';
 import { PrintReceiptModal } from '../pos/PrintReceiptModal';
 import { DEFAULT_CATEGORY_CONFIGS, getDefaultPrintLabelForType, isItemPrintable } from '../../services/categoryService';
+import { EditBillModal } from './EditBillModal';
+import { ExpenseChartSection } from './ExpenseChartSection';
+import { ConfirmDeleteModal } from '../common/ConfirmDeleteModal';
 import {
   X,
   TrendingUp,
@@ -241,6 +244,17 @@ export const AdminModal: React.FC<AdminModalProps> = ({
   // Preview / Re-print modal state for Order History
   const [previewModalOrder, setPreviewModalOrder] = useState<Order | null>(null);
   const [previewModalMode, setPreviewModalMode] = useState<'bill' | 'label' | 'both'>('bill');
+
+  // Edit bill modal state for Order History
+  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+
+  // Confirmation modal state for safe deletion of bill and expense
+  const [confirmDeleteTarget, setConfirmDeleteTarget] = useState<{
+    type: 'bill' | 'expense';
+    id: string;
+    name?: string;
+    details?: string;
+  } | null>(null);
 
   useEffect(() => {
     setPrinterForm(state.printerSettings);
@@ -476,7 +490,7 @@ export const AdminModal: React.FC<AdminModalProps> = ({
   const expenseRatio = totalRevenue > 0 ? Math.min(100, Math.round((totalExpenses / totalRevenue) * 100)) : (totalExpenses > 0 ? 100 : 0);
   const profitRatio = totalRevenue > 0 ? Math.max(0, Math.round((netProfit / totalRevenue) * 100)) : 0;
 
-  // Handlers for Order Preview & Re-print label
+  // Handlers for Order Preview, Re-print label & Edit Bill
   const handlePreviewOrderBill = (order: Order) => {
     setPreviewModalOrder(order);
     setPreviewModalMode('bill');
@@ -497,6 +511,46 @@ export const AdminModal: React.FC<AdminModalProps> = ({
       setPreviewModalOrder(order);
       setPreviewModalMode('label');
     }
+  };
+
+  const handleOpenEditBill = (order: Order) => {
+    setEditingOrder(order);
+  };
+
+  const handleSaveEditBill = (orderId: string, newTotal: number, newPaymentMethod: 'cash' | 'transfer') => {
+    const targetOrder = state.orders.find(o => o.id === orderId);
+    if (!targetOrder) return;
+
+    const oldTotal = targetOrder.total;
+    const updatedOrders = state.orders.map(o => {
+      if (o.id === orderId) {
+        return {
+          ...o,
+          total: newTotal,
+          paymentMethod: newPaymentMethod,
+        };
+      }
+      return o;
+    });
+
+    let updatedShift = state.currentShift;
+    if (updatedShift && targetOrder.shiftId === updatedShift.id) {
+      updatedShift = {
+        ...updatedShift,
+        totalSales: Math.max(0, updatedShift.totalSales - oldTotal + newTotal),
+      };
+    }
+
+    const updatedState: AppState = {
+      ...state,
+      orders: updatedOrders,
+      currentShift: updatedShift,
+    };
+
+    onUpdateState(updatedState);
+    pushStateToCloud(updatedState);
+    showToast(`Đã cập nhật hóa đơn #${targetOrder.code} (${formatVND(newTotal)}đ - ${newPaymentMethod === 'transfer' ? 'Chuyển khoản' : 'Tiền mặt'}) thành công!`);
+    setEditingOrder(null);
   };
 
   // Handlers for Expenses
@@ -520,10 +574,13 @@ export const AdminModal: React.FC<AdminModalProps> = ({
       createdAt: new Date().toISOString(),
     };
 
-    onUpdateState({
+    const updatedState: AppState = {
       ...state,
       expenses: [newExp, ...state.expenses],
-    });
+    };
+
+    onUpdateState(updatedState);
+    pushStateToCloud(updatedState);
 
     setNewExpenseTitle('');
     setNewExpenseAmount('');
@@ -531,48 +588,77 @@ export const AdminModal: React.FC<AdminModalProps> = ({
     showToast('Đã thêm phiếu chi thành công!');
   };
 
-  const handleDeleteExpense = (id: string) => {
-    const updatedDeletedExpenseIds = Array.from(new Set([
-      ...(state.deletedExpenseIds || []),
-      id,
-    ]));
-    const updated: AppState = {
-      ...state,
-      expenses: state.expenses.filter(e => e.id !== id),
-      deletedExpenseIds: updatedDeletedExpenseIds,
-    };
-    onUpdateState(updated);
-    pushStateToCloud(updated);
-    showToast('Đã xoá phiếu chi.');
+  // Handlers for Delete Confirmation (Bill & Expense)
+  const handlePromptDeleteOrder = (order: Order) => {
+    setConfirmDeleteTarget({
+      type: 'bill',
+      id: order.id,
+      name: `Hóa đơn #${order.code || order.id.slice(-6)}`,
+      details: `${formatVND(order.total)}đ • ${order.paymentMethod === 'transfer' ? 'Chuyển khoản' : 'Tiền mặt'} • ${order.createdAt ? new Date(order.createdAt).toLocaleString('vi-VN') : ''}`,
+    });
   };
 
-  // Handlers for Orders
-  const handleDeleteOrder = (id: string) => {
-    const targetOrder = state.orders.find(o => o.id === id);
-    const sanitizedDeletedIds = sanitizeDeletedOrderIds(state.deletedOrderIds || []);
-    const updatedDeletedOrderIds = Array.from(new Set([
-      ...sanitizedDeletedIds,
-      id,
-    ]));
+  const handlePromptDeleteExpense = (expenseId: string) => {
+    const exp = state.expenses.find(e => e.id === expenseId);
+    setConfirmDeleteTarget({
+      type: 'expense',
+      id: expenseId,
+      name: exp ? exp.title : 'Phiếu chi',
+      details: exp ? `${formatVND(exp.amount)}đ • ${exp.date || ''} • Người chi: ${exp.staffName || 'Admin'}` : undefined,
+    });
+  };
 
-    let updatedShift = state.currentShift;
-    if (updatedShift && targetOrder && targetOrder.shiftId === updatedShift.id) {
-      updatedShift = {
-        ...updatedShift,
-        totalSales: Math.max(0, updatedShift.totalSales - (targetOrder.total || 0)),
-        orderCount: Math.max(0, updatedShift.orderCount - 1),
+  const handleConfirmDelete = () => {
+    if (!confirmDeleteTarget) return;
+
+    if (confirmDeleteTarget.type === 'bill') {
+      const id = confirmDeleteTarget.id;
+      const targetOrder = state.orders.find(o => o.id === id);
+      const sanitizedDeletedIds = sanitizeDeletedOrderIds(state.deletedOrderIds || []);
+      const updatedDeletedOrderIds = Array.from(new Set([
+        ...sanitizedDeletedIds,
+        id,
+      ]));
+
+      let updatedShift = state.currentShift;
+      if (updatedShift && targetOrder && targetOrder.shiftId === updatedShift.id) {
+        updatedShift = {
+          ...updatedShift,
+          totalSales: Math.max(0, updatedShift.totalSales - (targetOrder.total || 0)),
+          orderCount: Math.max(0, updatedShift.orderCount - 1),
+        };
+      }
+
+      const updated: AppState = {
+        ...state,
+        orders: state.orders.filter(o => o.id !== id),
+        deletedOrderIds: updatedDeletedOrderIds,
+        currentShift: updatedShift,
       };
+      onUpdateState(updated);
+      pushStateToCloud(updated);
+      showToast(`Đã xoá ${confirmDeleteTarget.name || 'hóa đơn'}.`);
+    } else if (confirmDeleteTarget.type === 'expense') {
+      const id = confirmDeleteTarget.id;
+      const updatedDeletedExpenseIds = Array.from(new Set([
+        ...(state.deletedExpenseIds || []),
+        id,
+      ]));
+      const updated: AppState = {
+        ...state,
+        expenses: state.expenses.filter(e => e.id !== id),
+        deletedExpenseIds: updatedDeletedExpenseIds,
+      };
+      onUpdateState(updated);
+      pushStateToCloud(updated);
+      showToast(`Đã xoá ${confirmDeleteTarget.name || 'phiếu chi'}.`);
     }
 
-    const updated: AppState = {
-      ...state,
-      orders: state.orders.filter(o => o.id !== id),
-      deletedOrderIds: updatedDeletedOrderIds,
-      currentShift: updatedShift,
-    };
-    onUpdateState(updated);
-    pushStateToCloud(updated);
-    showToast('Đã xoá đơn hàng.');
+    setConfirmDeleteTarget(null);
+  };
+
+  const handleCancelDelete = () => {
+    setConfirmDeleteTarget(null);
   };
 
   // Handlers for Staff
@@ -1577,14 +1663,26 @@ export const AdminModal: React.FC<AdminModalProps> = ({
                                   <Tag className="w-3.5 h-3.5" />
                                   <span>In lại tem</span>
                                 </button>
+
+                                {/* 3. Nút "Sửa bill" (Edit bill) */}
+                                {!isViewer && (
+                                  <button
+                                    onClick={() => handleOpenEditBill(o)}
+                                    className="px-2.5 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                                    title="Sửa hóa đơn: Giá tiền & Phương thức thanh toán"
+                                  >
+                                    <Edit2 className="w-3.5 h-3.5 text-emerald-700" />
+                                    <span>Sửa bill</span>
+                                  </button>
+                                )}
                               </div>
 
-                              {/* 3. Nút Xóa (Chỉ dành cho Admin, ẩn với nhóm Xem sổ sách) */}
+                              {/* 4. Nút Xóa (Chỉ dành cho Admin, ẩn với nhóm Xem sổ sách) */}
                               {!isViewer && (
                                 <button
-                                  onClick={() => handleDeleteOrder(o.id)}
+                                  onClick={() => handlePromptDeleteOrder(o)}
                                   className="p-1.5 text-neutral-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
-                                  title="Xoá đơn này (Chỉ Admin)"
+                                  title="Xoá bill này (Chỉ Admin)"
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
                                 </button>
@@ -1596,48 +1694,13 @@ export const AdminModal: React.FC<AdminModalProps> = ({
                     </div>
                   </div>
 
-                  {/* Expenses List */}
-                  <div className="p-4 rounded-2xl bg-white border border-neutral-200 shadow-sm flex flex-col">
-                    <h4 className="text-xs font-bold text-neutral-700 uppercase tracking-wider mb-3">
-                      Danh Sách Phiếu Chi ({filteredExpenses.length})
-                    </h4>
-                    <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
-                      {filteredExpenses.length === 0 ? (
-                        <div className="py-12 text-center text-neutral-400 text-xs flex flex-col items-center justify-center gap-1.5">
-                          <Calendar className="w-5 h-5 text-neutral-300" />
-                          <span>Chưa có phiếu chi nào trong {getFilterShortLabel(revenueQuickFilter, selectedYear, selectedMonth).toLowerCase()}</span>
-                        </div>
-                      ) : (
-                        filteredExpenses.map((e) => (
-                          <div
-                            key={e.id}
-                            className="p-3 rounded-xl border border-neutral-200 bg-neutral-50 flex items-center justify-between text-xs"
-                          >
-                            <div>
-                              <span className="font-bold text-neutral-800">{e.title}</span>
-                              <div className="text-[11px] text-neutral-500 mt-0.5">
-                                {e.date} • {e.staffName}
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-3">
-                              <span className="font-black text-red-600 font-mono">
-                                -{formatVND(e.amount)}đ
-                              </span>
-                              {!isViewer && (
-                                <button
-                                  onClick={() => handleDeleteExpense(e.id)}
-                                  className="p-1 text-neutral-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
-                                  title="Xoá phiếu chi (Chỉ Admin)"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
+                  {/* Expenses Management Section: Biểu đồ chi tiêu trực quan & Bảng tổng hợp chi tiết */}
+                  <ExpenseChartSection
+                    expenses={filteredExpenses}
+                    filterLabel={getFilterShortLabel(revenueQuickFilter, selectedYear, selectedMonth)}
+                    isViewer={isViewer}
+                    onDeleteExpense={handlePromptDeleteExpense}
+                  />
                 </div>
               </div>
             )}
@@ -3730,6 +3793,27 @@ export const AdminModal: React.FC<AdminModalProps> = ({
           onClose={() => setPreviewModalOrder(null)}
         />
       )}
+
+      {/* Edit Bill Modal */}
+      {editingOrder && (
+        <EditBillModal
+          order={editingOrder}
+          isOpen={Boolean(editingOrder)}
+          onClose={() => setEditingOrder(null)}
+          onSave={handleSaveEditBill}
+        />
+      )}
+
+      {/* Safe Delete Confirmation Modal (Bill & Expense) */}
+      <ConfirmDeleteModal
+        isOpen={Boolean(confirmDeleteTarget)}
+        type={confirmDeleteTarget?.type || 'bill'}
+        title={confirmDeleteTarget?.type === 'bill' ? 'Xác nhận xóa Bill' : 'Xác nhận xóa Phiếu chi'}
+        targetName={confirmDeleteTarget?.name}
+        targetDetails={confirmDeleteTarget?.details}
+        onConfirm={handleConfirmDelete}
+        onCancel={handleCancelDelete}
+      />
     </div>
   );
 };
